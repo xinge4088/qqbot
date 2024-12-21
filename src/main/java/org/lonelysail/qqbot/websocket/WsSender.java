@@ -16,6 +16,11 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Logger;
 
+// 回调接口，用于连接成功后的处理
+interface ConnectionCallback {
+    void onConnected();
+}
+
 public class WsSender extends WebSocketClient {
     private static final org.slf4j.Logger log = LoggerFactory.getLogger(WsSender.class);
     private String message;
@@ -24,12 +29,15 @@ public class WsSender extends WebSocketClient {
     private final Lock lock = new ReentrantLock();
     private final Condition condition = lock.newCondition();
     private final JavaPlugin plugin;
+    private ConnectionCallback connectionCallback; // 回调接口
 
-    // Constructor with configuration and plugin
-    public WsSender(JavaPlugin plugin, Configuration config) {
+    // 构造函数，传入回调接口
+    public WsSender(JavaPlugin plugin, Configuration config, ConnectionCallback callback) {
         super(URI.create(Objects.requireNonNull(config.getString("uri"))).resolve("websocket/bot"));
         this.plugin = plugin;
         this.logger = plugin.getLogger();
+        this.connectionCallback = callback; // 设置回调
+
         HashMap<String, String> headers = new HashMap<>();
         headers.put("name", config.getString("name"));
         headers.put("token", config.getString("token"));
@@ -181,6 +189,11 @@ public class WsSender extends WebSocketClient {
     public void onOpen(ServerHandshake serverHandshake) {
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             logger.fine("[Sender] 与机器人成功建立链接！");
+            
+            // 连接成功时执行回调
+            if (connectionCallback != null) {
+                connectionCallback.onConnected();
+            }
         });
     }
 
