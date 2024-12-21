@@ -2,9 +2,9 @@ name: Java CI with Maven
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_dispatch:
 
 jobs:
@@ -32,9 +32,9 @@ jobs:
 
     - name: Create a new tag
       run: |
-        git tag -a v1.0.${{ github.run_number }} -m "Release version v1.0.${{ github.run_number }}"
-        git push https://xinge4088:${{ secrets.GITHUB_TOKEN }}@github.com/xinge4088/qqbot.git v1.0.${{ github.run_number }}
-
+        TAG_NAME="v1.0.${{ github.run_number }}"
+        git tag -a $TAG_NAME -m "Release version $TAG_NAME"
+        git push https://xinge4088:${{ secrets.GITHUB_TOKEN }}@github.com/xinge4088/qqbot.git $TAG_NAME
 
     - name: Create GitHub Release
       id: create_release
@@ -51,7 +51,3 @@ jobs:
         echo "Release creation succeeded"
         echo "You can download the JAR file from the following URL:"
         echo "https://github.com/${{ github.repository }}/releases/download/v1.0.${{ github.run_number }}/$(basename target/*.jar)"
-
-
-
-
