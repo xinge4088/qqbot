@@ -30,26 +30,23 @@ public final class QQBot extends JavaPlugin {
 
         // 使用异步任务来初始化 WebSocket 连接
         Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
-            // 初始化 WebSocket 发送者和监听器
-            websocketSender = new WsSender(this, this.config, () -> {
-                // WebSocket 连接成功后的回调
-                Bukkit.getScheduler().runTask(this, () -> {
-                    websocketListener = new WsListener(this, this.config);
-                    websocketListener.connect();  // 监听器也异步连接
+            // WebSocket 连接初始化
+            websocketSender = new WsSender(this, this.config);
+            websocketSender.connect(); // 异步连接 WebSocket
+            
+            websocketListener = new WsListener(this, this.config);
+            websocketListener.connect(); // 异步连接 WebSocket
 
-                    // 注册命令和事件监听器
-                    EventListener eventListener = new EventListener(websocketSender);
-                    QQCommand command = new QQCommand(websocketSender, this.config.getString("name"));
-                    Objects.requireNonNull(this.getCommand("qq")).setExecutor(command);
-                    this.getServer().getPluginManager().registerEvents(eventListener, this);
+            // 连接完成后，进行事件监听器和命令执行器注册
+            Bukkit.getScheduler().runTask(this, () -> {
+                EventListener eventListener = new EventListener(websocketSender);
+                QQCommand command = new QQCommand(websocketSender, this.config.getString("name"));
+                Objects.requireNonNull(this.getCommand("qq")).setExecutor(command);
+                this.getServer().getPluginManager().registerEvents(eventListener, this);
 
-                    // 延迟发送服务器启动信息
-                    Bukkit.getScheduler().runTaskLater(this, () -> websocketSender.sendServerStartup(), 20);
-                });
+                // 延迟发送服务器启动信息
+                Bukkit.getScheduler().runTaskLater(this, () -> websocketSender.sendServerStartup(), 20);
             });
-
-            // 连接 WebSocket
-            websocketSender.connect();
         });
     }
 
@@ -61,7 +58,7 @@ public final class QQBot extends JavaPlugin {
             // 发送服务器关闭信号
             websocketSender.sendServerShutdown();
             websocketSender.close();
-
+            
             // 停止 WebSocket 监听
             websocketListener.serverRunning = false;
             websocketListener.close();
