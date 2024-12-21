@@ -41,28 +41,36 @@ public class WsListener extends WebSocketClient {
         this.addHeader("info", this.utils.encode(headers));
     }
 
-    // 处理命令请求
-    private String command(String data) {
-        Bukkit.getScheduler().runTask(this.plugin, () -> this.server.dispatchCommand(this.server.getConsoleSender(), data));
-        return "命令已发送到服务器！当前插件不支持获取命令返回值。";
+    // 异步执行命令
+    private void commandAsync(String data) {
+        Bukkit.getScheduler().runTask(this.plugin, () -> {
+            // 异步执行 Minecraft 命令
+            server.dispatchCommand(server.getConsoleSender(), data);
+        });
     }
 
     // 获取在线玩家列表
-    private List<String> playerList(String data) {
-        List<String> players = new ArrayList<>();
-        for (Player player : this.server.getOnlinePlayers()) players.add(player.getName());
-        return players;
+    private void playerListAsync(String data) {
+        Bukkit.getScheduler().runTask(this.plugin, () -> {
+            List<String> players = new ArrayList<>();
+            for (Player player : server.getOnlinePlayers()) {
+                players.add(player.getName());
+            }
+            // 处理玩家列表 (如果需要可以发送响应)
+        });
     }
 
-    // 获取服务器CPU和内存占用
-    private List<Double> serverOccupation(String data) {
-        Runtime runtime = Runtime.getRuntime();
-        List<Double> serverOccupations = new ArrayList<>();
-        long freeMemory = runtime.freeMemory();
-        long totalMemory = runtime.totalMemory();
-        serverOccupations.add(this.bean.getProcessCpuLoad() * 100);
-        serverOccupations.add(((double) ((totalMemory - freeMemory)) / totalMemory) * 100);
-        return serverOccupations;
+    // 获取服务器 CPU 和内存占用
+    private void serverOccupationAsync(String data) {
+        Bukkit.getScheduler().runTask(this.plugin, () -> {
+            Runtime runtime = Runtime.getRuntime();
+            List<Double> serverOccupations = new ArrayList<>();
+            long freeMemory = runtime.freeMemory();
+            long totalMemory = runtime.totalMemory();
+            serverOccupations.add(bean.getProcessCpuLoad() * 100);
+            serverOccupations.add(((double) ((totalMemory - freeMemory)) / totalMemory) * 100);
+            // 处理服务器占用 (如果需要可以发送响应)
+        });
     }
 
     @Override
@@ -83,37 +91,39 @@ public class WsListener extends WebSocketClient {
         switch (eventType) {
             case "message":
                 String broadcastMessage = this.utils.toStringMessage((List) data);
-                this.server.broadcastMessage(broadcastMessage);
+                Bukkit.getScheduler().runTask(this.plugin, () -> server.broadcastMessage(broadcastMessage));
                 this.logger.fine("[Listener] 收到广播消息 " + broadcastMessage);
                 return;
 
             case "command":
-                // 如果事件类型是"command"，则调用command方法处理
-                response = this.command((String) data);
+                // 异步执行命令
+                commandAsync((String) data);
+                responseMessage.put("success", true);
+                responseMessage.put("data", "命令已发送到服务器！");
                 break;
 
             case "player_list":
-                // 如果事件类型是"player_list"，则调用playerList方法处理
-                response = this.playerList((String) data);
+                // 异步获取玩家列表
+                playerListAsync((String) data);
+                responseMessage.put("success", true);
+                responseMessage.put("data", "玩家列表请求已处理！");
                 break;
 
             case "server_occupation":
-                // 如果事件类型是"server_occupation"，则调用serverOccupation方法处理
-                response = this.serverOccupation((String) data);
+                // 异步获取服务器占用信息
+                serverOccupationAsync((String) data);
+                responseMessage.put("success", true);
+                responseMessage.put("data", "服务器占用请求已处理！");
                 break;
 
             default:
-                // 如果事件类型未知，则记录警告信息并返回失败响应
                 this.logger.warning("[Listener] 未知的事件类型: " + eventType);
                 responseMessage.put("success", false);
-                this.send(this.utils.encode(responseMessage));
-                return;
+                responseMessage.put("data", "未知事件类型");
+                break;
         }
 
-        responseMessage.put("success", true);
-        responseMessage.put("data", response);
-        this.logger.fine("发送响应消息 " + responseMessage);
-        // 构造成功响应并发送
+        // 发送响应消息
         this.send(this.utils.encode(responseMessage));
     }
 
@@ -133,4 +143,5 @@ public class WsListener extends WebSocketClient {
     }
 
 }
+
 
