@@ -71,3 +71,4 @@ public final class QQBot extends JavaPlugin {
         });
     }
 }
+
