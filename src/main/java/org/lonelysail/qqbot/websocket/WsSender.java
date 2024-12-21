@@ -23,10 +23,12 @@ public class WsSender extends WebSocketClient {
     private final Utils utils = new Utils();
     private final Lock lock = new ReentrantLock();
     private final Condition condition = lock.newCondition();
+    private final JavaPlugin plugin;
 
     // Constructor with configuration and plugin
     public WsSender(JavaPlugin plugin, Configuration config) {
         super(URI.create(Objects.requireNonNull(config.getString("uri"))).resolve("websocket/bot"));
+        this.plugin = plugin;
         this.logger = plugin.getLogger();
         HashMap<String, String> headers = new HashMap<>();
         headers.put("name", config.getString("name"));
@@ -39,28 +41,34 @@ public class WsSender extends WebSocketClient {
         return this.isOpen() && !this.isClosed() && !this.isClosing();
     }
 
-    // Attempt to reconnect up to 3 times if the connection is lost
-    public boolean tryReconnect() {
-        for (int count = 0; count < 3; count++) {
-            logger.warning("[Sender] 检测到与机器人的连接已断开！正在尝试重连……");
-            this.reconnect();
-            // try {
-            //     Thread.sleep(1000);  // Wait 1 second before retrying
-            // } catch (InterruptedException error) {
-            //     Thread.currentThread().interrupt();
-            // }
-            if (this.isConnected()) {
-                this.logger.info("[Sender] 与机器人连接成功！");
-                return true;
+    // Attempt to reconnect asynchronously to avoid blocking the main thread
+    public void tryReconnect() {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            for (int count = 0; count < 3; count++) {
+                if (this.isConnected()) {
+                    logger.info("[Sender] 已经连接，无需重连！");
+                    return;
+                }
+                logger.warning("[Sender] 检测到与机器人的连接已断开！正在尝试重连……");
+
+                this.reconnect();
+                if (this.isConnected()) {
+                    logger.info("[Sender] 与机器人连接成功！");
+                    return;
+                }
+                // Schedule the next retry after a short delay
+                int delayInSeconds = 2;
+                plugin.getServer().getScheduler().runTaskLater(plugin, this::reconnect, delayInSeconds * 20L);  // 2 seconds delay (20 ticks = 1 second in Minecraft)
+                return;
             }
-        }
-        logger.warning("[Sender] 重连失败！");
-        return false;
+            logger.warning("[Sender] 重连失败！");
+        });
     }
 
     // Send data to the server and optionally wait for a response
     public boolean sendData(String eventType, Object data, boolean waitResponse) {
-        if (!this.isConnected() && !this.tryReconnect()) {
+        if (!this.isConnected()) {
+            tryReconnect();
             return false;
         }
 
@@ -191,3 +199,4 @@ public class WsSender extends WebSocketClient {
         ex.printStackTrace();
     }
 }
+
