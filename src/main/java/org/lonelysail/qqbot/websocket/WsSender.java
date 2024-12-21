@@ -44,11 +44,11 @@ public class WsSender extends WebSocketClient {
         for (int count = 0; count < 3; count++) {
             logger.warning("[Sender] 检测到与机器人的连接已断开！正在尝试重连……");
             this.reconnect();
-            try {
-                Thread.sleep(1000);  // Wait 1 second before retrying
-            } catch (InterruptedException error) {
-                Thread.currentThread().interrupt();
-            }
+            // try {
+            //     Thread.sleep(1000);  // Wait 1 second before retrying
+            // } catch (InterruptedException error) {
+            //     Thread.currentThread().interrupt();
+            // }
             if (this.isConnected()) {
                 this.logger.info("[Sender] 与机器人连接成功！");
                 return true;
