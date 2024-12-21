@@ -23,10 +23,12 @@ public class WsSender extends WebSocketClient {
     private final Utils utils = new Utils();
     private final Lock lock = new ReentrantLock();
     private final Condition condition = lock.newCondition();
+    private final JavaPlugin plugin;
 
     // Constructor with configuration and plugin
     public WsSender(JavaPlugin plugin, Configuration config) {
         super(URI.create(Objects.requireNonNull(config.getString("uri"))).resolve("websocket/bot"));
+        this.plugin = plugin;
         this.logger = plugin.getLogger();
         HashMap<String, String> headers = new HashMap<>();
         headers.put("name", config.getString("name"));
@@ -104,58 +106,70 @@ public class WsSender extends WebSocketClient {
 
     // Send server startup event
     public void sendServerStartup() {
-        if (sendData("server_startup", new HashMap<>(), true)) {
-            logger.fine("发送服务器启动消息成功！");
-        } else {
-            logger.warning("发送服务器启动消息失败！");
-        }
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (sendData("server_startup", new HashMap<>(), true)) {
+                logger.fine("发送服务器启动消息成功！");
+            } else {
+                logger.warning("发送服务器启动消息失败！");
+            }
+        });
     }
 
     // Send server shutdown event
     public void sendServerShutdown() {
-        if (sendData("server_shutdown", new HashMap<>(), true)) {
-            logger.fine("发送服务器关闭消息成功！");
-        } else {
-            logger.warning("发送服务器关闭消息失败！");
-        }
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (sendData("server_shutdown", new HashMap<>(), true)) {
+                logger.fine("发送服务器关闭消息成功！");
+            } else {
+                logger.warning("发送服务器关闭消息失败！");
+            }
+        });
     }
 
     // Send player left event
     public void sendPlayerLeft(String name) {
-        if (sendData("player_left", name, true)) {
-            logger.fine("发送玩家离开消息成功！");
-        } else {
-            logger.warning("发送玩家离开消息失败！");
-        }
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (sendData("player_left", name, true)) {
+                logger.fine("发送玩家离开消息成功！");
+            } else {
+                logger.warning("发送玩家离开消息失败！");
+            }
+        });
     }
 
     // Send player joined event
     public void sendPlayerJoined(String name) {
-        if (sendData("player_joined", name, true)) {
-            logger.fine("发送玩家进入消息成功！");
-        } else {
-            logger.warning("发送玩家进入消息失败！");
-        }
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (sendData("player_joined", name, true)) {
+                logger.fine("发送玩家进入消息成功！");
+            } else {
+                logger.warning("发送玩家进入消息失败！");
+            }
+        });
     }
 
     // Send player chat event
     public void sendPlayerChat(String name, String message) {
-        List<String> data = Arrays.asList(name, message);
-        if (sendData("player_chat", data, false)) {
-            logger.fine("发送玩家消息成功！");
-        } else {
-            logger.warning("发送玩家消息失败！");
-        }
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            List<String> data = Arrays.asList(name, message);
+            if (sendData("player_chat", data, false)) {
+                logger.fine("发送玩家消息成功！");
+            } else {
+                logger.warning("发送玩家消息失败！");
+            }
+        });
     }
 
     // Send player death event
     public void sendPlayerDeath(String name, String message) {
-        List<String> data = Arrays.asList(name, message);
-        if (sendData("player_death", data, true)) {
-            logger.fine("发送玩家死亡消息成功！");
-        } else {
-            logger.warning("发送玩家死亡消息失败！");
-        }
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            List<String> data = Arrays.asList(name, message);
+            if (sendData("player_death", data, true)) {
+                logger.fine("发送玩家死亡消息成功！");
+            } else {
+                logger.warning("发送玩家死亡消息失败！");
+            }
+        });
     }
 
     // Send a synchronous message (wait for the response)
@@ -165,7 +179,9 @@ public class WsSender extends WebSocketClient {
 
     @Override
     public void onOpen(ServerHandshake serverHandshake) {
-        logger.fine("[Sender] 与机器人成功建立链接！");
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            logger.fine("[Sender] 与机器人成功建立链接！");
+        });
     }
 
     @Override
@@ -182,13 +198,21 @@ public class WsSender extends WebSocketClient {
 
     @Override
     public void onClose(int code, String reason, boolean remote) {
-        logger.info("[Sender] 与机器人的连接已断开！");
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            logger.info("[Sender] 与机器人的连接已断开！");
+        });
     }
 
     @Override
     public void onError(Exception ex) {
-        logger.warning("[Sender] 机器人连接发生 " + ex.getMessage() + " 错误！");
-        ex.printStackTrace();
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            logger.warning("[Sender] 机器人连接发生 " + ex.getMessage() + " 错误！");
+            ex.printStackTrace();
+        });
+    }
+
+    // Async connect WebSocket on plugin enable
+    public void asyncConnect() {
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, this::connect);
     }
 }
-
