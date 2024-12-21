@@ -27,7 +27,6 @@ public class WsListener extends WebSocketClient {
     private final Utils utils = new Utils();
     private final OperatingSystemMXBean bean = ManagementFactory.getPlatformMXBean(OperatingSystemMXBean.class);
 
-
     public WsListener(JavaPlugin plugin, Configuration config) {
         super(URI.create(Objects.requireNonNull(config.getString("uri"))).resolve("websocket/minecraft"));
         this.plugin = plugin;
@@ -44,7 +43,6 @@ public class WsListener extends WebSocketClient {
 
     // 处理命令请求
     private String command(String data) {
-    //    CustomCommandSender customSender = new CustomCommandSender(this.server.getConsoleSender());
         Bukkit.getScheduler().runTask(this.plugin, () -> this.server.dispatchCommand(this.server.getConsoleSender(), data));
         return "命令已发送到服务器！当前插件不支持获取命令返回值。";
     }
@@ -56,6 +54,7 @@ public class WsListener extends WebSocketClient {
         return players;
     }
 
+    // 获取服务器CPU和内存占用
     private List<Double> serverOccupation(String data) {
         Runtime runtime = Runtime.getRuntime();
         List<Double> serverOccupations = new ArrayList<>();
@@ -75,32 +74,42 @@ public class WsListener extends WebSocketClient {
     public void onMessage(String message) {
         HashMap<String, ?> map = this.utils.decode(message);
         Object data = map.get("data");
-        String event_type = (String) map.get("type");
+        String eventType = (String) map.get("type");
         this.logger.fine("收到消息机器人消息 " + map);
-        Object response;
-        HashMap<String, Object> responseMessage = new HashMap<>();
 
-        if (Objects.equals(event_type, "message")) {
-            String broadcastMessage = this.utils.toStringMessage((List) data);
-            this.server.broadcastMessage(broadcastMessage);
-            this.logger.fine("[Listener] 收到广播消息 " + broadcastMessage);
-            return;
-        } else if (Objects.equals(event_type, "command")) {
-            // 如果事件类型是"command"，则调用command方法处理
-            response = this.command((String) data);
-        } else if (Objects.equals(event_type, "player_list")) {
-            // 如果事件类型是"player_list"，则调用playerList方法处理
-            response = this.playerList((String) data);
-        } else if (Objects.equals(event_type, "server_occupation")) {
-            // 如果事件类型是"server_occupation"，则调用serverOccupation方法处理
-            response = this.serverOccupation((String) data);
-        } else {
-            // 如果事件类型未知，则记录警告信息并返回失败响应
-            this.logger.warning("[Listener] 未知的事件类型: " + event_type);
-            responseMessage.put("success", false);
-            this.send(this.utils.encode(responseMessage));
-            return;
+        HashMap<String, Object> responseMessage = new HashMap<>();
+        Object response;
+
+        switch (eventType) {
+            case "message":
+                String broadcastMessage = this.utils.toStringMessage((List) data);
+                this.server.broadcastMessage(broadcastMessage);
+                this.logger.fine("[Listener] 收到广播消息 " + broadcastMessage);
+                return;
+
+            case "command":
+                // 如果事件类型是"command"，则调用command方法处理
+                response = this.command((String) data);
+                break;
+
+            case "player_list":
+                // 如果事件类型是"player_list"，则调用playerList方法处理
+                response = this.playerList((String) data);
+                break;
+
+            case "server_occupation":
+                // 如果事件类型是"server_occupation"，则调用serverOccupation方法处理
+                response = this.serverOccupation((String) data);
+                break;
+
+            default:
+                // 如果事件类型未知，则记录警告信息并返回失败响应
+                this.logger.warning("[Listener] 未知的事件类型: " + eventType);
+                responseMessage.put("success", false);
+                this.send(this.utils.encode(responseMessage));
+                return;
         }
+
         responseMessage.put("success", true);
         responseMessage.put("data", response);
         this.logger.fine("发送响应消息 " + responseMessage);
@@ -122,4 +131,10 @@ public class WsListener extends WebSocketClient {
         this.logger.warning("[Listener] 机器人连接发生 " + ex.getMessage() + " 错误！");
         ex.printStackTrace();
     }
+
+    // 重新连接方法
+    private void reconnect() {
+        this.connect(); // 重新尝试连接
+    }
 }
+
