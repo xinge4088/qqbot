@@ -132,9 +132,5 @@ public class WsListener extends WebSocketClient {
         ex.printStackTrace();
     }
 
-    // 重新连接方法
-    private void reconnect() {
-        this.connect(); // 重新尝试连接
-    }
 }
 
