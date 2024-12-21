@@ -127,7 +127,7 @@ public class WsListener extends WebSocketClient {
     }
 
     // 重新连接WebSocket
-    private void reconnect() {
+    public void reconnect() {
         this.connect();
     }
 }
