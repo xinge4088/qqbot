@@ -98,22 +98,16 @@ public class WsListener extends WebSocketClient {
             case "command":
                 // 异步执行命令
                 commandAsync((String) data);
-                responseMessage.put("success", true);
-                responseMessage.put("data", "命令已发送到服务器！");
                 break;
 
             case "player_list":
                 // 异步获取玩家列表
                 playerListAsync((String) data);
-                responseMessage.put("success", true);
-                responseMessage.put("data", "玩家列表请求已处理！");
                 break;
 
             case "server_occupation":
                 // 异步获取服务器占用信息
                 serverOccupationAsync((String) data);
-                responseMessage.put("success", true);
-                responseMessage.put("data", "服务器占用请求已处理！");
                 break;
 
             default:
