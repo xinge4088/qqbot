@@ -30,10 +30,16 @@ public final class QQBot extends JavaPlugin {
 
         // 使用异步任务来初始化 WebSocket 连接
         Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
-            // 初始化 WebSocket 发送者和监听器
-            websocketSender = new WsSender(this, this.config, () -> {
-                // WebSocket 连接成功后的回调
+            // 初始化 WebSocket 发送者
+            websocketSender = new WsSender(this, this.config);
+
+            // 连接 WebSocket
+            websocketSender.connect();
+
+            // WebSocket 连接成功后的回调
+            websocketSender.setConnectionCallback(() -> {
                 Bukkit.getScheduler().runTask(this, () -> {
+                    // 初始化 WebSocket 监听器
                     websocketListener = new WsListener(this, this.config);
                     websocketListener.connect();  // 监听器也异步连接
 
@@ -47,9 +53,6 @@ public final class QQBot extends JavaPlugin {
                     Bukkit.getScheduler().runTaskLater(this, () -> websocketSender.sendServerStartup(), 20);
                 });
             });
-
-            // 连接 WebSocket
-            websocketSender.connect();
         });
     }
 
