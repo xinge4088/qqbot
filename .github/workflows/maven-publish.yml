@@ -23,7 +23,7 @@ jobs:
         cache: maven
 
     - name: Build with Maven
-      run: mvn -B package --file QQBot/pom.xml
+      run: mvn -B package --file pom.xml
 
     - name: Set up Git user
       run: |
