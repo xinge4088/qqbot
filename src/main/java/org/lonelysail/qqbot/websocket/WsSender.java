@@ -9,9 +9,11 @@ import org.lonelysail.qqbot.Utils;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
-import java.util.HashMap;
-import java.util.Objects;
-import java.util.concurrent.*;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Logger;
 
 public class WsSender extends WebSocketClient {
@@ -22,12 +24,7 @@ public class WsSender extends WebSocketClient {
     private final Lock lock = new ReentrantLock();
     private final Condition condition = lock.newCondition();
 
-    // 使用 ScheduledExecutorService 来定时执行任务
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-
-    // 需要一个 CompletableFuture 来处理响应的回调
-    private CompletableFuture<Boolean> responseFuture;
-
+    // Constructor with configuration and plugin
     public WsSender(JavaPlugin plugin, Configuration config) {
         super(URI.create(Objects.requireNonNull(config.getString("uri"))).resolve("websocket/bot"));
         this.logger = plugin.getLogger();
@@ -37,125 +34,161 @@ public class WsSender extends WebSocketClient {
         this.addHeader("info", this.utils.encode(headers));
     }
 
+    // Check if the WebSocket is connected
     public boolean isConnected() {
         return this.isOpen() && !this.isClosed() && !this.isClosing();
     }
 
+    // Attempt to reconnect up to 3 times if the connection is lost
     public boolean tryReconnect() {
-        // 使用 ScheduledExecutorService 来进行重连
         for (int count = 0; count < 3; count++) {
             logger.warning("[Sender] 检测到与机器人的连接已断开！正在尝试重连……");
             this.reconnect();
             try {
-                // 等待重连
-                if (this.isConnected()) {
-                    this.logger.info("[Sender] 与机器人连接成功！");
-                    return true;
-                }
-                TimeUnit.SECONDS.sleep(1);  // 等待 1 秒后重试
-            } catch (InterruptedException e) {
+                Thread.sleep(1000);  // Wait 1 second before retrying
+            } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
             }
+            if (this.isConnected()) {
+                this.logger.info("[Sender] 与机器人连接成功！");
+                return true;
+            }
         }
+        logger.warning("[Sender] 重连失败！");
         return false;
     }
 
-    public boolean sendData(String event_type, Object data, Boolean waitResponse) {
-        // 重连模块
-        if (!this.isConnected()) {
-            if (!this.tryReconnect()) {
-                return false;
-            }
+    // Send data to the server and optionally wait for a response
+    public boolean sendData(String eventType, Object data, boolean waitResponse) {
+        if (!this.isConnected() && !this.tryReconnect()) {
+            return false;
         }
-
-        // 通过 CompletableFuture 来异步处理响应
-        responseFuture = new CompletableFuture<>();
 
         HashMap<String, Object> messageData = new HashMap<>();
         messageData.put("data", data);
-        messageData.put("type", event_type);
+        messageData.put("type", eventType);
+
         try {
-            this.send(this.utils.encode(messageData));
-        } catch (WebsocketNotConnectedException error) {
+            this.send(this.utils.encode(messageData));  // Send data as a Base64 encoded JSON string
+        } catch (WebsocketNotConnectedException e) {
             logger.warning("[Sender] 发送数据失败！与机器人的连接已断开。");
             return false;
         }
 
-        // 如果不需要等待响应，直接返回
         if (!waitResponse) return true;
 
+        // Wait for response synchronously with a timeout of 5 seconds
+        return awaitResponse();
+    }
+
+    // Helper method to wait for a response with a timeout
+    private boolean awaitResponse() {
+        boolean responseReceived = false;
+        lock.lock();
         try {
-            // 异步等待响应，超时后返回失败
-            return responseFuture.get(5, TimeUnit.SECONDS);
-        } catch (TimeoutException e) {
+            responseReceived = condition.await(5, TimeUnit.SECONDS);  // Wait for response with a 5-second timeout
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            lock.unlock();
+        }
+
+        if (!responseReceived) {
             logger.warning("[Sender] 等待响应超时。");
             return false;
-        } catch (InterruptedException | ExecutionException e) {
-            Thread.currentThread().interrupt();
-            return false;
         }
+
+        // Return the success status from the response message
+        return (boolean) this.utils.decode(this.message).get("success");
+    }
+
+    // Send server startup event
+    public void sendServerStartup() {
+        if (sendData("server_startup", new HashMap<>(), true)) {
+            logger.fine("发送服务器启动消息成功！");
+        } else {
+            logger.warning("发送服务器启动消息失败！");
+        }
+    }
+
+    // Send server shutdown event
+    public void sendServerShutdown() {
+        if (sendData("server_shutdown", new HashMap<>(), true)) {
+            logger.fine("发送服务器关闭消息成功！");
+        } else {
+            logger.warning("发送服务器关闭消息失败！");
+        }
+    }
+
+    // Send player left event
+    public void sendPlayerLeft(String name) {
+        if (sendData("player_left", name, true)) {
+            logger.fine("发送玩家离开消息成功！");
+        } else {
+            logger.warning("发送玩家离开消息失败！");
+        }
+    }
+
+    // Send player joined event
+    public void sendPlayerJoined(String name) {
+        if (sendData("player_joined", name, true)) {
+            logger.fine("发送玩家进入消息成功！");
+        } else {
+            logger.warning("发送玩家进入消息失败！");
+        }
+    }
+
+    // Send player chat event
+    public void sendPlayerChat(String name, String message) {
+        List<String> data = Arrays.asList(name, message);
+        if (sendData("player_chat", data, false)) {
+            logger.fine("发送玩家消息成功！");
+        } else {
+            logger.warning("发送玩家消息失败！");
+        }
+    }
+
+    // Send player death event
+    public void sendPlayerDeath(String name, String message) {
+        List<String> data = Arrays.asList(name, message);
+        if (sendData("player_death", data, true)) {
+            logger.fine("发送玩家死亡消息成功！");
+        } else {
+            logger.warning("发送玩家死亡消息失败！");
+        }
+    }
+
+    // Send a synchronous message (wait for the response)
+    public boolean sendSynchronousMessage(String message) {
+        return sendData("message", message, true);
+    }
+
+    @Override
+    public void onOpen(ServerHandshake serverHandshake) {
+        logger.fine("[Sender] 与机器人成功建立链接！");
     }
 
     @Override
     public void onMessage(String message) {
-        this.lock.lock();
+        // Handle the received message and notify the waiting thread
+        lock.lock();
         try {
             this.message = message;
-            // 这里使用 responseFuture 来触发返回
-            boolean success = (boolean) this.utils.decode(message).get("success");
-            responseFuture.complete(success);  // 异步返回结果
-            this.condition.signalAll(); // 唤醒等待线程
+            condition.signalAll();
         } finally {
-            this.lock.unlock();
+            lock.unlock();
         }
-    }
-
-    @Override
-    public void onOpen(ServerHandshake handshakedata) {
-        logger.info("[Sender] WebSocket 连接已建立。");
     }
 
     @Override
     public void onClose(int code, String reason, boolean remote) {
-        logger.info("[Sender] WebSocket 连接已关闭。关闭原因: " + reason);
+        logger.info("[Sender] 与机器人的连接已断开！");
     }
 
     @Override
     public void onError(Exception ex) {
-        logger.warning("[Sender] WebSocket 错误: " + ex.getMessage());
-    }
-
-    public void sendServerStartup() {
-        HashMap<String, Object> data = new HashMap<>();
-        if (this.sendData("server_startup", data, true)) {
-            this.logger.fine("发送服务器启动消息成功！");
-        } else {
-            this.logger.warning("发送服务器启动消息失败！请检查机器人是否启动后再次尝试。");
-        }
-    }
-
-    public void sendServerShutdown() {
-        HashMap<String, Object> data = new HashMap<>();
-        if (this.sendData("server_shutdown", data, true)) {
-            this.logger.fine("发送服务器关闭消息成功！");
-        } else {
-            this.logger.warning("发送服务器关闭消息失败！请检查机器人是否启动后再次尝试。");
-        }
-    }
-
-    public void sendPlayerLeft(String name) {
-        HashMap<String, Object> data = new HashMap<>();
-        data.put("name", name);
-        if (this.sendData("player_left", data, true)) {
-            this.logger.fine("发送玩家离开消息成功！");
-        } else {
-            this.logger.warning("发送玩家离开消息失败！");
-        }
-    }
-
-    // 关闭连接时清理资源
-    public void shutdown() {
-        this.close();
-        scheduler.shutdown();  // 停止定时任务
+        logger.warning("[Sender] 机器人连接发生 " + ex.getMessage() + " 错误！");
+        ex.printStackTrace();
     }
 }
+
